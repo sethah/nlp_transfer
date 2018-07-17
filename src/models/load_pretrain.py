@@ -11,8 +11,8 @@ from ignite.engine import Engine, Events, create_supervised_trainer, create_supe
 from ignite.handlers.checkpoint import ModelCheckpoint
 
 # local packages
-from models import *
-import utils
+from models.models import *
+import models.utils
 
 def load_model(special_embeds=0, weights_path="model/"):
 

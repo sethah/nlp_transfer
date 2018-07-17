@@ -1,5 +1,8 @@
+%cd nlp_transfer/src
 %load_ext autoreload
 %autoreload 2
+%matplotlib inline
+
 sys.path.append("/home/cdsw/pytorch-openai-transformer-lm/")
 import numpy as np
 import math, copy, time
@@ -13,6 +16,8 @@ from collections import Counter
 import ftfy
 import re
 
+os.chdir(os.getcwd())
+
 # pytorch libraries
 import torch
 import torch.nn as nn
@@ -23,64 +28,65 @@ from ignite.engine import Engine, Events, create_supervised_trainer, create_supe
 from ignite.handlers.checkpoint import ModelCheckpoint
 
 # local packages
-from models import *
-from load_pretrain import load_model
-import utils
-from text_utils import TextEncoder
+from models.models import *
+from models.load_pretrain import load_model
+import models.utils
+from models.text_utils import TextEncoder, AttentionIterator
+from models.metrics import Perplexity
 
-seaborn.set_context(context="talk")
-%matplotlib inline
+
+SAVE_PATH = "/tmp/ignite2"
+CHECKPOINT_DIR = "/tmp/ignite"
+MODELS_PATH = "../models/openai-transformer-lm/"
+ENCODER_PATH = os.path.join(MODELS_PATH, "encoder_bpe_40000.json")
+BPE_PATH = "/home/cdsw/pytorch-openai-transformer-lm/model/vocab_40000.bpe"
 
 BATCH_SIZE = 512
 BPTT_LEN = 70
 PAD_TOKEN = "<pad>"
-SAVE_PATH = "/tmp/ignite2"
-CHECKPOINT_DIR = "/tmp/ignite"
-WEIGHTS_PATH = "/home/cdsw/finetune-transformer-lm/model/"
-ENCODER_PATH = "/home/cdsw/finetune-transformer-lm/model/encoder_bpe_40000.json"
-BPE_PATH = "/home/cdsw/pytorch-openai-transformer-lm/model/vocab_40000.bpe"
-  
-text_encoder = TextEncoder(ENCODER_PATH, BPE_PATH)
-
-encoder_dict = json.load(open(ENCODER_PATH))
-encoder_dict = {k: len(encoder_dict) - v for k, v in encoder_dict.items()}
-
-vocab = Vocab(Counter(encoder_dict), specials=[])
-
-nlp = spacy.load('en', disable=['parser', 'tagger', 'ner', 'textcat'])
-def tokenizer(text):
-  text = text.replace("<unk>", "unk")
-  tokens = []
-  for tok in nlp(utils.text_standardize(ftfy.fix_text(text))):
-    tokens.extend(text_encoder.bpe(tok.text).split(' '))
-  return tokens
 
 num_gpus = torch.cuda.device_count()
 devices = [torch.device("cuda", i) for i in range(num_gpus)]
 device_ids = [d.index for d in devices]
 
+encoder_dict = json.load(open(ENCODER_PATH))
+encoder_dict = {k: len(encoder_dict) - v for k, v in encoder_dict.items()}
+vocab = Vocab(Counter(encoder_dict), specials=[])
+special_embeds = 3
+pos_start = len(vocab) + special_embeds
+
+nlp = spacy.load('en', disable=['parser', 'tagger', 'ner', 'textcat'])
+text_encoder = TextEncoder(ENCODER_PATH, BPE_PATH)
+def tokenizer(text):
+  text = text.replace("<unk>", "unk")
+  tokens = []
+  for tok in nlp(models.utils.text_standardize(ftfy.fix_text(text))):
+    tokens.extend(text_encoder.bpe(tok.text).split(' '))
+  return tokens
+
 TEXT = data.Field(lower=True, tokenize=tokenizer)
 train, valid, test = datasets.WikiText2.splits(TEXT)
 TEXT.vocab = vocab
-train_iter, valid_iter, test_iter = data.BPTTIterator.splits(
+pad_idx = vocab.stoi[PAD_TOKEN]
+iters = data.BPTTIterator.splits(
     (train, valid, test),
     batch_size=BATCH_SIZE,
     bptt_len=BPTT_LEN,
     device=0,
     repeat=False)
-pad_idx = vocab.stoi[PAD_TOKEN]
+train_iter, valid_iter, test_iter = (AttentionIterator(it, pos_start, pad_idx) for it in iters)
 
-def rebatch(pad_idx, batch, pos_start):
-    "Fix order in torchtext to match ours"
-    src = batch.text.transpose(0, 1)
-    batch_size, seq_len = src.shape
-    b = utils.Batch(batch.text.transpose(0, 1), batch.target.transpose(0, 1), pad_idx)
-    position_indices = torch.arange(pos_start, pos_start + seq_len).repeat(batch_size, 1).long().to(b.src.device)
-    b.src = torch.stack((b.src, position_indices), dim=2)
-    return b
+#def rebatch(pad_idx, batch, pos_start):
+#    "Fix order in torchtext to match ours"
+#    src = batch.text.transpose(0, 1)
+#    batch_size, seq_len = src.shape
+#    b = utils.Batch(batch.text.transpose(0, 1), batch.target.transpose(0, 1), pad_idx)
+#    position_indices = torch.arange(pos_start, pos_start + seq_len).repeat(batch_size, 1).long().to(b.src.device)
+#    b.src = torch.stack((b.src, position_indices), dim=2)
+#    return b
 
-special_embeds = 3
-embeds, encoder, generator = load_model(special_embeds=special_embeds, weights_path=WEIGHTS_PATH)
+
+embeds, encoder, generator = load_model(special_embeds=special_embeds, weights_path=MODELS_PATH)
 criterion = nn.NLLLoss().to(devices[0])
 valid_criterion = nn.NLLLoss(reduce=False, size_average=False).to(devices[0])
 
@@ -89,8 +95,6 @@ for param in encoder.parameters():
   param.requires_grad = False
 for param in embeds.parameters():
   param.requires_grad = False
-
-pos_start = len(vocab) + special_embeds
 
 class EncoderOnly(nn.Module):
     def __init__(self, encoder, embed, generator):
@@ -108,52 +112,25 @@ model = EncoderOnly(encoder, embeds, generator).to(devices[0])
 model_par = nn.DataParallel(model, device_ids=[d.index for d in devices])
 parameters = filter(lambda p: p.requires_grad, model.parameters())
 frozen = filter(lambda p: not p.requires_grad, model.parameters())
-#sub_optimizer = torch.optim.Adam(parameters, lr=0, betas=(0.9, 0.98), eps=1e-9)
-#model_opt = NoamOpt(model.embed.d_model, 2, 1000, sub_optimizer)
 model_opt = torch.optim.Adam(parameters, lr=0.01, betas=(0.9, 0.98), eps=1e-9)
 lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(model_opt, gamma=0.95)
 
-from ignite.metrics import Metric
-class Perplexity(Metric):
-  
-    def __init__(self, loss_compute):
-        super(Perplexity, self).__init__()
-        self._loss_compute = loss_compute
-
-    def reset(self):
-        self._total_nll = 0
-        self._num_examples = 0
-
-    def update(self, output):
-        y_pred, y, ntokens = output
-        batch_size = y.shape[0]
-        nll = self._loss_compute(y_pred, y, ntokens, parameters)
-        self._total_nll += nll
-        self._num_examples += ntokens
-
-    def compute(self):
-        if self._num_examples == 0:
-            raise NotComputableError('must have at least one example before it can be computed')
-        return np.exp(self._total_nll / self._num_examples)
-
 def training_update_function(engine, batch):
   model_par.train()
-  b = rebatch(pad_idx, batch, pos_start)
-  out = model_par.forward(b.src, b.src_mask)
-  loss_compute = utils.MultiGPULossCompute(model.generator, criterion, device_ids, opt=model_opt, clip=0.125)
-  loss = loss_compute(out, b.src_y, b.ntokens.float(), parameters)
+  out = model_par.forward(batch.src, batch.src_mask)
+  loss_compute = models.utils.MultiGPULossCompute(model.generator, criterion, device_ids, opt=model_opt, clip=0.125)
+  loss = loss_compute(out, batch.src_y, parameters)
   
   return loss
 
 def inference(engine, batch):
   model_par.eval()
-  b = rebatch(pad_idx, batch, pos_start)
-  out = model_par.forward(b.src, b.src_mask)
-  return out, b.src_y, b.ntokens.float().item()
+  out = model_par.forward(batch.src, batch.src_mask)
+  return out, batch.src_y, batch.ntokens.float().item()
 
 trainer = Engine(training_update_function)
 
-metric = Perplexity(utils.MultiGPULossCompute(model.generator, valid_criterion, device_ids, opt=None))
+metric = Perplexity(models.utils.MultiGPULossCompute(model.generator, valid_criterion, device_ids, opt=None))
 evaluator = Engine(inference)
 metric.attach(evaluator, "ppl")
 

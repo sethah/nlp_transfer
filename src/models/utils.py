@@ -14,7 +14,7 @@ class MultiGPULossCompute(object):
         self.devices=devices
         self.clip = clip
         
-    def __call__(self, out, targets, normalize, params):
+    def __call__(self, out, targets, params):
         total = 0.0
         generator = self.generator
 
