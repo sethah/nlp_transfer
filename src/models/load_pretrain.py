@@ -49,11 +49,11 @@ def load_model(special_embeds=0, weights_path="model/"):
   ff = PositionwiseFeedForward(d_model, d_ff, dropout)
   position = PositionalEncoding(d_model, dropout)
   encoder = Encoder(EncoderLayer(d_model, attn, ff, dropout), n_layers)
-  embeds = Embeddings(d_model, vocab_len)
+  embeds = Embeddings(d_model, vocab_len + special_embeds)
   #embeds.lut.weight.requires_grad = False
   #embeds.lut.weight.copy_(vocab.vectors)
 #  pos_embeds = nn.Sequential(embeds, position)
-  generator = Generator(d_model, vocab_len)
+  generator = Generator(d_model, vocab_len + special_embeds)
   #criterion = LabelSmoothing(size=vocab_len, padding_idx=pad_idx, smoothing=0.1).to(devices[0])
 
 #  shapes = dict(list(encoder.named_parameters()))

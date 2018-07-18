@@ -1,3 +1,4 @@
+import numpy as np
 from ignite.metrics import Metric
 
 class Perplexity(Metric):
@@ -13,7 +14,7 @@ class Perplexity(Metric):
     def update(self, output):
         y_pred, y, ntokens = output
         batch_size = y.shape[0]
-        nll = self._loss_compute(y_pred, y, parameters)
+        nll = self._loss_compute(y_pred, y).item()
         self._total_nll += nll
         self._num_examples += ntokens
 

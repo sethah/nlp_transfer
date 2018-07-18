@@ -122,7 +122,7 @@ class AttentionIterator(object):
         masked = AttentionIterator._mask(batch, self.mask_value)
         batch_size, seq_len = masked.src.shape
         position_indices = torch.arange(self.pos_start_index, self.pos_start_index + seq_len, 
-                                        device=batch.src.device,
+                                        device=masked.src.device,
                                         dtype=torch.long).repeat(batch_size, 1).long()
         masked.src = torch.stack((masked.src, position_indices), dim=2)
         yield masked
