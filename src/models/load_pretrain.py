@@ -1,18 +1,30 @@
 import numpy as np
 import os, sys
 import json
+from collections import Counter
 
 # pytorch libraries
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchtext import data, datasets
+from torchtext.vocab import Vocab
 from ignite.engine import Engine, Events, create_supervised_trainer, create_supervised_evaluator
 from ignite.handlers.checkpoint import ModelCheckpoint
 
 # local packages
 from models.models import *
 import models.utils
+
+def load_vocab(special_tokens, encoder_path):
+  encoder_dict = json.load(open(encoder_path))
+  for tok in special_tokens:
+    encoder_dict[tok] = len(encoder_dict)
+  encoder_dict = {k: len(encoder_dict) - v for k, v in encoder_dict.items()}
+  cnt = Counter(encoder_dict)
+  vocab = Vocab(cnt, specials=[])
+  return vocab
+
 
 def load_model(special_embeds=0, weights_path="model/"):
 
