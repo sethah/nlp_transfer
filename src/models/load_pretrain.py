@@ -13,7 +13,7 @@ from ignite.engine import Engine, Events, create_supervised_trainer, create_supe
 from ignite.handlers.checkpoint import ModelCheckpoint
 
 # local packages
-from models.models import *
+from models.modules import *
 import models.utils
 
 def load_vocab(special_tokens, encoder_path):
@@ -65,7 +65,6 @@ def load_model(special_embeds=0, weights_path="model/"):
   #embeds.lut.weight.requires_grad = False
   #embeds.lut.weight.copy_(vocab.vectors)
 #  pos_embeds = nn.Sequential(embeds, position)
-  generator = Generator(d_model, vocab_len + special_embeds)
   #criterion = LabelSmoothing(size=vocab_len, padding_idx=pad_idx, smoothing=0.1).to(devices[0])
 
 #  shapes = dict(list(encoder.named_parameters()))
@@ -107,4 +106,4 @@ def load_model(special_embeds=0, weights_path="model/"):
 #  for n, p in encoder.named_parameters():
 #    print(n, p.data.shape)
     
-  return embeds, encoder, generator#, shapes, dict(list(encoder.named_parameters()))
+  return embeds, encoder#, shapes, dict(list(encoder.named_parameters()))

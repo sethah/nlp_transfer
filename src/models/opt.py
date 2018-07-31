@@ -1,6 +1,7 @@
 import math
 import torch
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import StepLR
 from torch.nn.utils import clip_grad_norm_
 
 def warmup_cosine(x, warmup=0.002):
@@ -101,3 +102,36 @@ class OpenAIAdam(Optimizer):
                     p.data.add_(-lr_scheduled * group['l2'], p.data)
 
         return loss
+      
+class GradualUnfreezingOptimizer(object):
+  
+  def __init__(self, optimizer, layer_groups, epoch=-1, iteration=0, 
+               get_iter_scheduler=None):
+    self._epoch = epoch
+    self._iteration = iteration
+    self.layer_groups = layer_groups
+    self.optimizer = optimizer
+    self.get_iter_scheduler = get_iter_scheduler
+    if self.get_iter_scheduler is not None:
+      self.iter_scheduler = get_iter_scheduler(self.optimizer)
+
+  def step_epoch(self):
+    self._epoch += 1
+    for grp in self.optimizer.param_groups:
+      grp['initial_lr'] *= 0.95
+    if self._epoch < len(self.layer_groups):
+      grp = self.layer_groups[self._epoch]
+      for p in grp['params']:
+        p.requires_grad = True
+      # grp['lr'] = grp['initial_lr']
+      self.optimizer.add_param_group(grp)
+    if self.get_iter_scheduler is not None:
+      self.iter_scheduler = self.get_iter_scheduler(self.optimizer)
+
+  def step_iteration(self):
+    self._iteration += 1
+    if self.iter_scheduler is not None:
+      self.iter_scheduler.step()
+      
+  def get_lr(self):
+    return [p['lr'] for p in self.optimizer.param_groups]

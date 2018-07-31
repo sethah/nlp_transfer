@@ -27,7 +27,7 @@ from ignite.engine import Engine, Events, create_supervised_trainer, create_supe
 from ignite.handlers.checkpoint import ModelCheckpoint
 
 # local packages
-from models.models import *
+from models.modules import *
 from models.load_pretrain import load_model, load_vocab
 import models.utils
 from models.text_utils import TextEncoder, AttentionIterator, Batch
@@ -80,7 +80,7 @@ if not os.path.exists(os.path.join(DATA_PATH, "interim", "wikitext2_bpe_train_id
   datasets = {phase: ds for phase, ds in zip(phases, datasets.WikiText2.splits(TEXT))}
   for phase, dataset in datasets.items():
     idx = np.array([vocab.stoi[tok] for tok in dataset.examples[0].text])
-    np.save(os.path.join(DATA_PATH, "interim", f"wikitext2_bpe_{phase}_idx.npy"), idx)
+    np.save(os.path.join(DATA_PATH, "processed/wikitext2_bpe", f"{phase}.npy"), idx)
 idx_tokens = {phase: np.load(os.path.join(DATA_PATH, "interim", f"wikitext2_bpe_{phase}_idx.npy")) for phase in phases}
 
 iters = {}
@@ -214,7 +214,7 @@ num_epochs = 5
 train_state = trainer.run(iters['train'], max_epochs=2)
 
 
-eval_state = evaluator.run(iters['test'])
+eval_state = evaluator.run(iters['valid'])
 print("Test set perplexity: %0.2f" % eval_state.metrics['ppl'])
 
 #torch.load(os.path.join(CHECKPOINT_DIR, "my_model13_opt_20.pth"))

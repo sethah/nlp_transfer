@@ -83,7 +83,8 @@ def text_standardize(text):
     text = re.sub(r'[^\S\n]+', ' ', text)
     return text.strip()
 
-def cyclical_lr(step_sz, min_lr=0.001, max_lr=1, mode='triangular', scale_func=None, scale_md='cycles', gamma=1.):
+def cyclical_lr(step_sz, min_lr=0.001, max_lr=1, mode='triangular', 
+                scale_func=None, scale_md='cycles', gamma=1.):
     """implements a cyclical learning rate policy (CLR).
     Notes: the learning rate of optimizer should be 1
 

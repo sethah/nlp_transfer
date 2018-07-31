@@ -33,12 +33,13 @@ class EncoderDecoder(nn.Module):
       
 class Generator(nn.Module):
     "Define standard linear + softmax generation step."
-    def __init__(self, d_model, vocab):
+    def __init__(self, d_model, vocab, drop=0.0):
         super(Generator, self).__init__()
+        self.dropout = nn.Dropout(drop)
         self.proj = nn.Linear(d_model, vocab)
 
     def forward(self, x):
-        return F.log_softmax(self.proj(x), dim=-1)
+        return F.log_softmax(self.proj(self.dropout(x)), dim=-1)
       
 class Encoder(nn.Module):
     "Core encoder is a stack of N layers"
